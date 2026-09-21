@@ -1,8 +1,9 @@
 # OpenCode 2.x
 
-Dedicated entrypoint: `@telsoncc/opencode-commandcode/plugin/opencode2`.
-`exports["./server"]` serves the same module. Do **not** also load the classic
-V1 `plugin.ts` shape in the same host.
+Load the package by its bare name — the host resolves the `./server` export,
+which serves the 2.0 entrypoint. Do **not** append `/plugin/opencode2` in
+config (npm subpaths are treated as local paths), and do **not** also load
+the classic V1 `plugin.ts` shape in the same host.
 
 Requires OpenCode **2.x**, or OpenCode **1.18.29+** (object entrypoints) via
 `./server`. Older 1.x needs the pre-dual package version.
@@ -26,11 +27,12 @@ dates). The picker sorts by `released` descending, so filter by provider
 
 ```jsonc
 {
-  "plugins": ["@telsoncc/opencode-commandcode/plugin/opencode2"],
+  "plugins": ["@telsoncc/opencode-commandcode"],
 }
 ```
 
-Pin a version by inserting `@<version>` before `/plugin/opencode2`.
+Pin a version (`"@telsoncc/opencode-commandcode@<version>"`) if you do not
+want automatic catalog patches.
 The legacy V1 `plugin` key keeps working through V2's V1-compat
 normalization, but prefer the native `plugins` form above.
 

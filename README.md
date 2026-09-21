@@ -69,9 +69,13 @@ This plugin supplies model metadata. Point OpenCode at Command Code's documented
 
 ```jsonc
 {
-  "plugins": ["@telsoncc/opencode-commandcode/plugin/opencode2"],
+  "plugins": ["@telsoncc/opencode-commandcode"],
 }
 ```
+
+The host resolves the package's `./server` export, which serves the 2.0
+entrypoint. (Do not append `/plugin/opencode2` in config: subpaths are
+treated as local paths, not npm specifiers.)
 
 The 2.0 entrypoint registers the `commandcode` provider (native
 `openai-compatible` runtime, Provider API base URL) and its 71-model catalog
@@ -80,7 +84,7 @@ block (including models dumped by `bun run sync -- --update-global`): it
 fights the plugin-owned inventory. `sync --update-global` is 1.x-only.
 Full guide plus local-clone loading: `docs/opencode-2.md`.
 
-Pin a version instead (insert `@<version>` before `/plugin/opencode2`) if you do not
+Pin a version instead (`"@telsoncc/opencode-commandcode@<version>"`) if you do not
 want automatic catalog patches.
 
 ### Connect
