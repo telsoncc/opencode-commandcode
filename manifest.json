@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-20T16:38:04.091Z",
+  "generatedAt": "2026-09-21T21:43:28.805Z",
   "pluginVersion": "1.0.0",
-  "commandCodeVersion": "1.58.1",
-  "commandCodeTarball": "https://registry.npmjs.org/command-code/-/command-code-1.58.1.tgz",
-  "modelCount": 71,
-  "reasoningModelCount": 61,
+  "commandCodeVersion": "1.60.0",
+  "commandCodeTarball": "https://registry.npmjs.org/command-code/-/command-code-1.60.0.tgz",
+  "modelCount": 73,
+  "reasoningModelCount": 63,
   "extraction": {
     "modelCatalog": "ok",
     "costCatalog": "cli",
@@ -13,46 +13,18 @@
   },
   "costSources": {
     "cli": 21,
-    "officialDocs": 50,
-    "thirdParty": 0,
+    "officialDocs": 51,
+    "thirdParty": 1,
     "free": 0,
     "fallback": 0,
     "unmatched": 0
   },
   "review": {
-    "thirdParty": [],
+    "thirdParty": [
+      "stepfun/Step-5-Preview"
+    ],
     "free": [],
-    "unmatched": [],
-    "unavailable": [
-      {
-        "id": "MiniMaxAI/MiniMax-M3-Free",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "gpt-6-astra",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "inclusionai/ling-3.0-flash-free",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "meituan/LongCat-2.0:free",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "minimax/minimax-m2.7-free",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "minimax/minimax-m3-free",
-        "reason": "not-listed-by-provider-api"
-      },
-      {
-        "id": "tencent/Hy3",
-        "reason": "not-listed-by-provider-api"
-      }
-    ]
+    "unmatched": []
   },
   "status": "healthy"
 }
