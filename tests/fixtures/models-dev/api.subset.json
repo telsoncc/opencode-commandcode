@@ -1,0 +1,54 @@
+{
+  "google": {
+    "models": {
+      "google/gemini-3.5-flash": {
+        "id": "google/gemini-3.5-flash",
+        "name": "Gemini 3.5 Flash",
+        "attachment": true,
+        "modalities": {
+          "input": ["text", "image", "video", "audio", "pdf"],
+          "output": ["text"]
+        },
+        "cost": { "input": 1.5, "output": 9, "cache_read": 0.15 }
+      }
+    }
+  },
+  "tencent": {
+    "models": {
+      "tencent/hy4-preview": {
+        "id": "tencent/hy4-preview",
+        "name": "Tencent Hy4 Preview",
+        "attachment": false,
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "cost": { "input": 0.834, "output": 2.501, "cache_read": 0.042 }
+      }
+    }
+  },
+  "zai": {
+    "models": {
+      "zai-org/GLM-5.1": {
+        "id": "zai-org/GLM-5.1",
+        "name": "GLM-5.1",
+        "cost": { "input": 1.4, "output": 4.4, "cache_read": 0.26 }
+      }
+    }
+  },
+  "vercel": {
+    "models": {
+      "minimax/minimax-m2.7-free": {
+        "id": "minimax/minimax-m2.7-free",
+        "name": "Minimax M2.7 (Free)",
+        "cost": { "input": 0, "output": 0 }
+      }
+    }
+  },
+  "qwen": {
+    "models": {
+      "Qwen3.6-Plus": {
+        "id": "Qwen3.6-Plus",
+        "name": "Qwen 3.6 Plus",
+        "cost": { "input": 0.5, "output": 3, "cache_read": 0.1 }
+      }
+    }
+  }
+}

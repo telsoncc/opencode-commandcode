@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "outDir": "dist",
+    "declaration": true
+  },
+  "include": ["index.ts", "plugin.ts", "plugin-opencode2.ts", "src/**/*.ts"],
+  "exclude": ["scripts/", "tests/"]
+}

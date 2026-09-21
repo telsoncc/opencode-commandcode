@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js.map
+.DS_Store
+opencode.local.json
+.commandcode/
+
+# workit: SDD working state (never commit)
+docs/*/sdd/
