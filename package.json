@@ -1,6 +1,6 @@
 {
   "name": "@telsoncc/opencode-commandcode",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Command Code API provider for opencode — use Claude, GPT, Gemini, DeepSeek, Qwen, Kimi, GLM, MiniMax, and Step models via Command Code",
   "keywords": [
     "ai",
