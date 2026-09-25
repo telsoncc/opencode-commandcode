@@ -6,12 +6,14 @@ import type { ModelEntry } from "./catalog.js";
 export type { ModelEntry } from "./catalog.js";
 
 export type StartupSummary = {
-  catalogSource: "bundled" | "cache" | "opt-in-local";
+  catalogSource: "bundled" | "cache" | "opt-in-local" | "remote";
   commandCodeVersion: string | null;
   modelCount: number;
   reasoningModelCount: number;
   degraded: boolean;
   degradedReason: string | null;
+  /** Remote ids with no local cost data yet — next catalog sync picks them up. */
+  pendingNewCount?: number;
 };
 
 export function pluginStateDir(): string {

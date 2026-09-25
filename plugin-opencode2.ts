@@ -3,7 +3,13 @@ import {
   COMMANDCODE_INTEGRATION_ID,
   applyIntegration,
   applyProviderInventory,
+  attachRemoteRefreshRunner,
+  isRemoteSyncDisabled,
   loadCatalogForV2,
+  persistRefreshedModels,
+  refreshCatalogFromRemote,
+  writeRemoteRefreshSummary,
+  type RemoteRefreshResult,
   type V2SetupContext,
 } from "./src/opencode2.js";
 import type { ModelEntry } from "./src/catalog.js";
@@ -15,7 +21,9 @@ import type { ModelEntry } from "./src/catalog.js";
  * Models register in memory via `ctx.provider.transform` + `editor.add` +
  * `reload()` — nothing is written into `opencode.json`. Auth registers a
  * `commandcode` integration (API key via `/connect`, `COMMANDCODE_API_KEY`
- * env fallback).
+ * env fallback). After startup the inventory refreshes itself from the live
+ * availability API every 6h (opt out with `disableModelSync` in
+ * `~/.config/opencode/opencode-commandcode.json`).
  *
  * Dual export: `{ id, setup, server }`. OpenCode 2.0 loads this module and
  * calls `setup()`; OpenCode 1.18.29+ prefers `exports["./server"]` and calls
@@ -39,7 +47,9 @@ export async function setup(ctx: V2SetupContext): Promise<() => Promise<void>> {
   );
 
   const catalog = loadCatalogForV2();
-  const inventory: ModelEntry[] = catalog.models;
+  // Reassigned by the remote refresh below; the provider transform closure
+  // replays against the current value on every reload().
+  let inventory: ModelEntry[] = catalog.models;
   let sourceConnection: unknown;
   const refreshConnection = async (): Promise<void> => {
     try {
@@ -59,6 +69,40 @@ export async function setup(ctx: V2SetupContext): Promise<() => Promise<void>> {
     await ctx.provider.reload();
   } catch {
     // Keep the last-good inventory when the reload fails.
+  }
+
+  // Live availability refresh: prune ids the API retired and surface new
+  // ones without waiting for an npm publish. The bundled catalog stays as
+  // the offline fallback; models unknown locally are reported, not
+  // published, until a catalog sync extracts their cost data.
+  const sameInventory = (next: ModelEntry[]): boolean =>
+    next.length === inventory.length && next.every((m, i) => m.id === inventory[i]?.id);
+
+  const syncFromRemote = async (): Promise<void> => {
+    if (isRemoteSyncDisabled()) return;
+    let result: RemoteRefreshResult;
+    try {
+      result = await refreshCatalogFromRemote(loadCatalogForV2().models);
+    } catch {
+      return;
+    }
+    writeRemoteRefreshSummary(result, catalog.commandCodeVersion);
+    if (result.models.length === 0 || sameInventory(result.models)) return;
+    inventory = result.models;
+    persistRefreshedModels(inventory);
+    try {
+      await ctx.provider.reload();
+    } catch {
+      // Keep serving the last-good inventory; the next tick retries.
+    }
+  };
+
+  let detachRefresh: (() => void) | null = null;
+  if (!isRemoteSyncDisabled()) {
+    detachRefresh = attachRemoteRefreshRunner(() => syncFromRemote());
+    void syncFromRemote().catch(() => {
+      // Startup already published the bundled inventory.
+    });
   }
 
   // Rebind the inventory when credentials switch; the transform closure reads
@@ -88,6 +132,7 @@ export async function setup(ctx: V2SetupContext): Promise<() => Promise<void>> {
 
   return async () => {
     stopped = true;
+    detachRefresh?.();
     for (const registration of registrations.reverse()) {
       try {
         await registration.dispose();

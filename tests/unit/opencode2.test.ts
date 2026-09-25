@@ -1,5 +1,5 @@
 import { expect, test, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -7,10 +7,17 @@ import {
   COMMANDCODE_PROVIDER_ID,
   applyIntegration,
   applyProviderInventory,
+  applyRemoteAvailability,
+  attachRemoteRefreshRunner,
   buildProviderInfo,
   buildV2Models,
+  fetchRemoteAvailability,
   loadCatalogForV2,
   modelEntryToV2,
+  persistRefreshedModels,
+  refreshCatalogFromRemote,
+  remoteRefreshRunnerCount,
+  writeRemoteRefreshSummary,
   type V2IntegrationDraft,
   type V2ProviderEditor,
 } from "../../src/opencode2.ts";
@@ -152,4 +159,129 @@ test("loadCatalogForV2 resolves the bundled catalog", () => {
   expect(catalog.source).toBe("bundled");
   expect(catalog.models.length).toBeGreaterThan(20);
   expect(catalog.commandCodeVersion).toMatch(/^\d+\.\d+\.\d+/);
+});
+
+function testEntry(id: string): ModelEntry {
+  return {
+    id,
+    name: id,
+    tier: "open-source",
+    reasoning: false,
+    tool_call: true,
+    cost: { input: 0.1, output: 0.2 },
+    limit: { context: 1000, output: 100 },
+  };
+}
+
+function stubFetch(
+  handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = handler as typeof fetch;
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
+const availabilityPayload = (ids: string[]): string =>
+  JSON.stringify({ object: "list", data: ids.map((id) => ({ id })) });
+
+test("applyRemoteAvailability splits retained, retired and new ids", () => {
+  const base = [testEntry("a/one"), testEntry("a/two")];
+  const result = applyRemoteAvailability(base, ["a/two", "b/three", "b/three"]);
+  expect(result.models.map((m) => m.id)).toEqual(["a/two"]);
+  expect(result.unavailable).toEqual(["a/one"]);
+  expect(result.pendingNew).toEqual(["b/three"]);
+  expect(result.remoteCount).toBe(3);
+});
+
+test("fetchRemoteAvailability parses the provider list payload", async () => {
+  const restore = stubFetch(async (input) => {
+    expect(String(input)).toContain("/models");
+    return new Response(availabilityPayload(["a/one"]), { status: 200 });
+  });
+  try {
+    await expect(fetchRemoteAvailability(1000)).resolves.toEqual(["a/one"]);
+  } finally {
+    restore();
+  }
+});
+
+test("fetchRemoteAvailability throws on HTTP errors", async () => {
+  const restore = stubFetch(async () => new Response("nope", { status: 500 }));
+  try {
+    await expect(fetchRemoteAvailability(1000)).rejects.toThrow("HTTP 500");
+  } finally {
+    restore();
+  }
+});
+
+test("fetchRemoteAvailability throws on malformed payloads", async () => {
+  const restore = stubFetch(
+    async () => new Response(JSON.stringify({ object: "list", data: [] }), { status: 200 }),
+  );
+  try {
+    await expect(fetchRemoteAvailability(1000)).rejects.toThrow(/non-empty array/);
+  } finally {
+    restore();
+  }
+});
+
+test("refreshCatalogFromRemote reconciles the base catalog", async () => {
+  const restore = stubFetch(
+    async () => new Response(availabilityPayload(["a/two", "c/new"]), { status: 200 }),
+  );
+  try {
+    const result = await refreshCatalogFromRemote([testEntry("a/one"), testEntry("a/two")], 1000);
+    expect(result.models.map((m) => m.id)).toEqual(["a/two"]);
+    expect(result.unavailable).toEqual(["a/one"]);
+    expect(result.pendingNew).toEqual(["c/new"]);
+  } finally {
+    restore();
+  }
+});
+
+test("writeRemoteRefreshSummary records the remote source", () => {
+  const result = applyRemoteAvailability([testEntry("a/one")], ["a/one", "b/new"]);
+  writeRemoteRefreshSummary(result, "1.65.2");
+  const summary = JSON.parse(readFileSync(join(testStateDir, "startup.json"), "utf-8")) as {
+    catalogSource: string;
+    modelCount: number;
+    pendingNewCount: number;
+    degraded: boolean;
+  };
+  expect(summary.catalogSource).toBe("remote");
+  expect(summary.modelCount).toBe(1);
+  expect(summary.pendingNewCount).toBe(1);
+  expect(summary.degraded).toBe(false);
+});
+
+test("persistRefreshedModels refreshes the disk cache", () => {
+  persistRefreshedModels([testEntry("a/one")]);
+  const cached = JSON.parse(
+    readFileSync(join(testStateDir, "catalog-cache.json"), "utf-8"),
+  ) as Array<{ id: string }>;
+  expect(cached.map((m) => m.id)).toEqual(["a/one"]);
+  persistRefreshedModels([]);
+  const kept = JSON.parse(
+    readFileSync(join(testStateDir, "catalog-cache.json"), "utf-8"),
+  ) as Array<{ id: string }>;
+  expect(kept.map((m) => m.id)).toEqual(["a/one"]);
+});
+
+test("attachRemoteRefreshRunner shares one timer and detaches", async () => {
+  expect(remoteRefreshRunnerCount()).toBe(0);
+  let calls = 0;
+  const detach = attachRemoteRefreshRunner(async () => {
+    calls++;
+  }, 10);
+  expect(remoteRefreshRunnerCount()).toBe(1);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(calls).toBeGreaterThan(0);
+  detach();
+  detach();
+  expect(remoteRefreshRunnerCount()).toBe(0);
+  const frozen = calls;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(calls).toBe(frozen);
 });

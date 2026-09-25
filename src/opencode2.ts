@@ -2,7 +2,14 @@ import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { toConfigKey, loadCatalogFromLocalCommandCode, type ModelEntry } from "./catalog.js";
+import {
+  MODELS_API_URL,
+  filterCatalogByAvailability,
+  parseAvailabilityIds,
+  toConfigKey,
+  loadCatalogFromLocalCommandCode,
+  type ModelEntry,
+} from "./catalog.js";
 import {
   readCatalogCache,
   writeCatalogCache,
@@ -241,7 +248,7 @@ function readBundledVersion(): string | null {
   }
 }
 
-export type V2CatalogSource = "bundled" | "cache" | "opt-in-local";
+export type V2CatalogSource = "bundled" | "cache" | "opt-in-local" | "remote";
 
 export interface LoadedV2Catalog {
   models: ModelEntry[];
@@ -333,4 +340,124 @@ export function loadCatalogForV2(): LoadedV2Catalog {
   }
 
   return { models, source, commandCodeVersion, degraded, degradedReason };
+}
+
+export const REMOTE_SYNC_TIMEOUT_MS = 15_000;
+export const REMOTE_SYNC_INTERVAL_MS = 6 * 3600_000;
+
+export interface RemoteRefreshResult {
+  models: ModelEntry[];
+  unavailable: string[];
+  pendingNew: string[];
+  remoteCount: number;
+}
+
+/** Live availability ids from the Provider API. No auth required. */
+export async function fetchRemoteAvailability(
+  timeoutMs = REMOTE_SYNC_TIMEOUT_MS,
+): Promise<string[]> {
+  const response = await fetch(MODELS_API_URL, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`availability request failed: HTTP ${response.status}`);
+  }
+  return parseAvailabilityIds(await response.json());
+}
+
+/**
+ * Reconcile a local catalog with live availability: keep the ids the API
+ * still serves, report retired ones, and list remote ids missing locally.
+ * Missing ids are *not* published — they carry no cost/limit data until a
+ * catalog sync extracts them.
+ */
+export function applyRemoteAvailability(
+  base: ModelEntry[],
+  remoteIds: string[],
+): RemoteRefreshResult {
+  const { retained, unavailable } = filterCatalogByAvailability(base, remoteIds);
+  const known = new Set(base.map((m) => m.id));
+  const pendingNew = [...new Set(remoteIds)].filter((id) => !known.has(id)).sort();
+  return { models: retained, unavailable, pendingNew, remoteCount: remoteIds.length };
+}
+
+export async function refreshCatalogFromRemote(
+  base: ModelEntry[],
+  timeoutMs = REMOTE_SYNC_TIMEOUT_MS,
+): Promise<RemoteRefreshResult> {
+  return applyRemoteAvailability(base, await fetchRemoteAvailability(timeoutMs));
+}
+
+export function isRemoteSyncDisabled(): boolean {
+  return loadPluginFileConfig().disableModelSync === true;
+}
+
+/** Overwrite the last-good disk cache with a refreshed inventory. */
+export function persistRefreshedModels(models: ModelEntry[]): void {
+  if (models.length === 0) return;
+  try {
+    writeCatalogCache(pluginStateDir(), models);
+  } catch {
+    // ignore cache write
+  }
+}
+
+export function writeRemoteRefreshSummary(
+  result: RemoteRefreshResult,
+  commandCodeVersion: string | null,
+): void {
+  const summary: StartupSummary = {
+    catalogSource: "remote",
+    commandCodeVersion,
+    modelCount: result.models.length,
+    reasoningModelCount: result.models.filter((m) => m.reasoning).length,
+    degraded: result.models.length === 0,
+    degradedReason:
+      result.models.length === 0 ? "remote availability matched no local models" : null,
+    pendingNewCount: result.pendingNew.length,
+  };
+  try {
+    writeStartupSummary(pluginStateDir(), summary);
+  } catch {
+    // ignore
+  }
+}
+
+const remoteRefreshRunners = new Set<() => Promise<void>>();
+let remoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+export function remoteRefreshRunnerCount(): number {
+  return remoteRefreshRunners.size;
+}
+
+/**
+ * Share one interval across setups in the process. Returns a detach
+ * function; the timer stops after the last runner detaches.
+ */
+export function attachRemoteRefreshRunner(
+  run: () => Promise<void>,
+  intervalMs = REMOTE_SYNC_INTERVAL_MS,
+): () => void {
+  remoteRefreshRunners.add(run);
+  if (!remoteRefreshTimer) {
+    remoteRefreshTimer = setInterval(() => {
+      for (const runner of remoteRefreshRunners) {
+        void runner().catch(() => {
+          // A failed refresh keeps the last inventory; the next tick retries.
+        });
+      }
+    }, intervalMs);
+    remoteRefreshTimer.unref?.();
+  }
+  let detached = false;
+  return () => {
+    if (detached) return;
+    detached = true;
+    remoteRefreshRunners.delete(run);
+    if (remoteRefreshRunners.size === 0 && remoteRefreshTimer) {
+      clearInterval(remoteRefreshTimer);
+      remoteRefreshTimer = null;
+    }
+  };
 }
