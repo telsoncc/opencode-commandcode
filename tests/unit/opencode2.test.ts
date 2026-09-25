@@ -232,10 +232,7 @@ test("refreshCatalogFromRemote reconciles the base catalog", async () => {
     async () => new Response(availabilityPayload(["a/two", "c/new"]), { status: 200 }),
   );
   try {
-    const result = await refreshCatalogFromRemote(
-      [testEntry("a/one"), testEntry("a/two")],
-      1000,
-    );
+    const result = await refreshCatalogFromRemote([testEntry("a/one"), testEntry("a/two")], 1000);
     expect(result.models.map((m) => m.id)).toEqual(["a/two"]);
     expect(result.unavailable).toEqual(["a/one"]);
     expect(result.pendingNew).toEqual(["c/new"]);
