@@ -10,6 +10,7 @@ import {
   loadCatalogFromLocalCommandCode,
   type ModelEntry,
 } from "./catalog.js";
+import { buildEstimatedEntry, loadModelsDevRows, type ModelsDevRow } from "./costs-models-dev.js";
 import {
   readCatalogCache,
   writeCatalogCache,
@@ -350,6 +351,8 @@ export interface RemoteRefreshResult {
   unavailable: string[];
   pendingNew: string[];
   remoteCount: number;
+  /** Provisional entries published with models.dev estimates. */
+  estimated: ModelEntry[];
 }
 
 /** Live availability ids from the Provider API. No auth required. */
@@ -369,8 +372,8 @@ export async function fetchRemoteAvailability(
 /**
  * Reconcile a local catalog with live availability: keep the ids the API
  * still serves, report retired ones, and list remote ids missing locally.
- * Missing ids are *not* published — they carry no cost/limit data until a
- * catalog sync extracts them.
+ * Missing ids stay pending here — refreshCatalogFromRemote tries to publish
+ * them with models.dev estimates first.
  */
 export function applyRemoteAvailability(
   base: ModelEntry[],
@@ -379,14 +382,52 @@ export function applyRemoteAvailability(
   const { retained, unavailable } = filterCatalogByAvailability(base, remoteIds);
   const known = new Set(base.map((m) => m.id));
   const pendingNew = [...new Set(remoteIds)].filter((id) => !known.has(id)).sort();
-  return { models: retained, unavailable, pendingNew, remoteCount: remoteIds.length };
+  return {
+    models: retained,
+    unavailable,
+    pendingNew,
+    remoteCount: remoteIds.length,
+    estimated: [],
+  };
 }
 
 export async function refreshCatalogFromRemote(
   base: ModelEntry[],
   timeoutMs = REMOTE_SYNC_TIMEOUT_MS,
 ): Promise<RemoteRefreshResult> {
-  return applyRemoteAvailability(base, await fetchRemoteAvailability(timeoutMs));
+  const result = applyRemoteAvailability(base, await fetchRemoteAvailability(timeoutMs));
+  if (result.pendingNew.length === 0) return result;
+  let rows: ModelsDevRow[] = [];
+  try {
+    rows = await loadModelsDevRows();
+  } catch {
+    return result;
+  }
+  if (rows.length === 0) return result;
+  const usedKeys = new Set(base.map((m) => toConfigKey(m.id)));
+  const estimated: ModelEntry[] = [];
+  const stillPending: string[] = [];
+  for (const id of result.pendingNew) {
+    const key = toConfigKey(id);
+    if (usedKeys.has(key)) {
+      stillPending.push(id);
+      continue;
+    }
+    const entry = buildEstimatedEntry(id, rows);
+    if (!entry) {
+      stillPending.push(id);
+      continue;
+    }
+    usedKeys.add(key);
+    estimated.push(entry);
+  }
+  return {
+    models: [...result.models, ...estimated],
+    unavailable: result.unavailable,
+    pendingNew: stillPending,
+    remoteCount: result.remoteCount,
+    estimated,
+  };
 }
 
 export function isRemoteSyncDisabled(): boolean {
@@ -416,6 +457,7 @@ export function writeRemoteRefreshSummary(
     degradedReason:
       result.models.length === 0 ? "remote availability matched no local models" : null,
     pendingNewCount: result.pendingNew.length,
+    estimatedCount: result.estimated.length,
   };
   try {
     writeStartupSummary(pluginStateDir(), summary);

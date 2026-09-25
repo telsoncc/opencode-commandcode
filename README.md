@@ -24,6 +24,9 @@ Forked and currently maintained by **[telsoncc](https://github.com/telsoncc)** (
 - Vision vs text-only comes from the Command Code CLI catalog (`inputModalities` on every SKU). [models.dev](https://models.dev) only adds extra inputs (video/audio/pdf) when it matches.
 - Reasoning effort **variants** on models that declare `reasoningEfforts`.
 - Quiet OpenCode startup (diagnostics go to `startup.json`, not stdout).
+- Live catalog refresh on the 2.0 entrypoint: retired models are pruned and
+  new ones are published with [models.dev](https://models.dev) estimates
+  (marked `(est.)`) until the next catalog sync replaces them.
 - Native **OpenCode 2.x** entrypoint (`plugin/opencode2`, also served as `server`):
   in-memory provider inventory via `ctx.provider.transform` (no config writes)
   plus a `commandcode` integration for `/connect`. See `docs/opencode-2.md`.
@@ -99,6 +102,22 @@ Run `/connect` in opencode, search for **Command Code**, and enter your API key,
 
 On 2.x the catalog carries no release dates, so filter the picker by provider
 **Command Code** if the global list looks empty.
+
+## Live catalog refresh (2.x)
+
+The 2.0 entrypoint re-checks the Provider API (`/models`, no auth) on setup
+and every 6h on a process-shared timer:
+
+- ids the API retired are pruned from the inventory;
+- ids missing locally are published immediately with
+  [models.dev](https://models.dev) cost/capability estimates, named
+  `"<model> (est.)"`, and replaced by exact data on the next catalog sync;
+- ids with no estimable data stay reported (not published) until the sync.
+
+Estimates are list prices, close to but not equal to Command Code billing.
+`startup.json` records `catalogSource: "remote"`, `pendingNewCount`, and
+`estimatedCount`. Opt out with `disableModelSync: true` in
+`~/.config/opencode/opencode-commandcode.json`.
 
 ## Optional local CLI override
 

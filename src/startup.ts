@@ -14,6 +14,8 @@ export type StartupSummary = {
   degradedReason: string | null;
   /** Remote ids with no local cost data yet — next catalog sync picks them up. */
   pendingNewCount?: number;
+  /** Provisional entries published with models.dev estimates. */
+  estimatedCount?: number;
 };
 
 export function pluginStateDir(): string {

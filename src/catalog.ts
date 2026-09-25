@@ -17,6 +17,8 @@ export interface ModelEntry {
   limit: { context: number; output: number };
   attachment?: boolean;
   modalities?: { input: string[]; output: string[] };
+  /** Runtime estimate from models.dev — replaced on the next catalog sync. */
+  estimated?: boolean;
 }
 
 export interface CostEntry {
