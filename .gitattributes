@@ -1,0 +1,4 @@
+# Enforce LF everywhere so Windows checkouts match Linux CI.
+# Without this, core.autocrlf converts to CRLF on Windows and oxfmt
+# --check fails on every file (oxfmt normalizes to LF).
+* text=auto eol=lf
