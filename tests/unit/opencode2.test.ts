@@ -22,6 +22,8 @@ import {
   type V2ProviderEditor,
 } from "../../src/opencode2.ts";
 import type { ModelEntry } from "../../src/catalog.ts";
+import { MODELS_API_URL } from "../../src/catalog.ts";
+import { MODELS_DEV_CACHE_FILE, MODELS_DEV_URL } from "../../src/costs-models-dev.ts";
 
 const sampleEntry: ModelEntry = {
   id: "Qwen/Qwen3.7-Max",
@@ -248,11 +250,13 @@ test("writeRemoteRefreshSummary records the remote source", () => {
     catalogSource: string;
     modelCount: number;
     pendingNewCount: number;
+    estimatedCount: number;
     degraded: boolean;
   };
   expect(summary.catalogSource).toBe("remote");
   expect(summary.modelCount).toBe(1);
   expect(summary.pendingNewCount).toBe(1);
+  expect(summary.estimatedCount).toBe(0);
   expect(summary.degraded).toBe(false);
 });
 
@@ -284,4 +288,63 @@ test("attachRemoteRefreshRunner shares one timer and detaches", async () => {
   const frozen = calls;
   await new Promise((resolve) => setTimeout(resolve, 30));
   expect(calls).toBe(frozen);
+});
+
+const ESTIMATE_MODELS_DEV_JSON = JSON.stringify({
+  acme: {
+    models: {
+      "x/brand-new": {
+        id: "x/brand-new",
+        name: "Brand New",
+        cost: { input: 1, output: 4 },
+        reasoning: true,
+        limit: { context: 300000, output: 32000 },
+      },
+    },
+  },
+});
+
+function stubRoutedFetch(): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url === MODELS_DEV_URL) return new Response(ESTIMATE_MODELS_DEV_JSON, { status: 200 });
+    if (url === MODELS_API_URL) {
+      return new Response(
+        JSON.stringify({ object: "list", data: [{ id: "a/two" }, { id: "x/brand-new" }] }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
+test("refreshCatalogFromRemote publishes estimable ids and keeps the rest pending", async () => {
+  rmSync(join(testStateDir, MODELS_DEV_CACHE_FILE), { force: true });
+  const restore = stubRoutedFetch();
+  try {
+    const result = await refreshCatalogFromRemote([testEntry("a/one"), testEntry("a/two")], 1000);
+    expect(result.models.map((m) => m.id)).toEqual(["a/two", "x/brand-new"]);
+    expect(result.unavailable).toEqual(["a/one"]);
+    expect(result.pendingNew).toEqual([]);
+    expect(result.estimated.map((m) => m.id)).toEqual(["x/brand-new"]);
+    const estimated = result.models.find((m) => m.id === "x/brand-new");
+    expect(estimated?.name).toBe("Brand New (est.)");
+    expect(estimated?.estimated).toBe(true);
+    expect(estimated?.cost).toEqual({ input: 1, output: 4 });
+    writeRemoteRefreshSummary(result, "1.65.2");
+    const summary = JSON.parse(readFileSync(join(testStateDir, "startup.json"), "utf-8")) as {
+      modelCount: number;
+      pendingNewCount: number;
+      estimatedCount: number;
+    };
+    expect(summary.modelCount).toBe(2);
+    expect(summary.pendingNewCount).toBe(0);
+    expect(summary.estimatedCount).toBe(1);
+  } finally {
+    restore();
+  }
 });

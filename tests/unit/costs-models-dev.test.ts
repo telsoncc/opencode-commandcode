@@ -1,11 +1,16 @@
 import { expect, test, describe } from "bun:test";
-import { readFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import {
   applyFreeCosts,
   applyModelsDevCosts,
   applyModelsDevModalities,
+  buildEstimatedEntry,
+  findModelsDevRow,
   isFreeSku,
+  loadModelsDevRows,
+  MODELS_DEV_CACHE_FILE,
   parseModelsDev,
   TEXT_ONLY_MODALITIES,
 } from "../../src/costs-models-dev.ts";
@@ -130,5 +135,148 @@ describe("applyFreeCosts", () => {
     expect(models[0].cost).toEqual({ input: 0, output: 0 });
     expect(models[1].cost).toEqual({ input: 0.5, output: 2 });
     expect([...filled]).toEqual(["tencent/Hy3"]);
+  });
+});
+
+const RICH_MODELS_DEV_JSON = JSON.stringify({
+  acme: {
+    models: {
+      "acme/new-pro": {
+        id: "acme/New-Pro",
+        name: "New Pro",
+        cost: { input: 2, output: 8, cache_read: 0.2 },
+        attachment: true,
+        modalities: { input: ["text", "image"], output: ["text"] },
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "max"] }],
+        tool_call: true,
+        limit: { context: 500000, output: 64000 },
+      },
+    },
+  },
+});
+
+describe("findModelsDevRow", () => {
+  const rows = parseModelsDev(RICH_MODELS_DEV_JSON);
+
+  test("matches by exact id, segment and name", () => {
+    expect(findModelsDevRow(rows, "acme/New-Pro")?.name).toBe("New Pro");
+    expect(findModelsDevRow(rows, "other/New-Pro")?.name).toBe("New Pro");
+    expect(findModelsDevRow(rows, "unrelated", "New Pro")?.name).toBe("New Pro");
+    expect(findModelsDevRow(rows, "unrelated")).toBeUndefined();
+  });
+});
+
+describe("buildEstimatedEntry", () => {
+  const rows = parseModelsDev(RICH_MODELS_DEV_JSON);
+
+  test("maps a matched row with estimate markers", () => {
+    const entry = buildEstimatedEntry("acme/New-Pro", rows);
+    expect(entry).not.toBeNull();
+    expect(entry?.id).toBe("acme/New-Pro");
+    expect(entry?.name).toBe("New Pro (est.)");
+    expect(entry?.estimated).toBe(true);
+    expect(entry?.cost).toEqual({ input: 2, output: 8, cache_read: 0.2 });
+    expect(entry?.reasoning).toBe(true);
+    expect(entry?.reasoningEfforts).toEqual(["low", "max"]);
+    expect(entry?.tool_call).toBe(true);
+    expect(entry?.limit).toEqual({ context: 500000, output: 64000 });
+    expect(entry?.attachment).toBe(true);
+    expect(entry?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+  });
+
+  test("matches by last path segment", () => {
+    const entry = buildEstimatedEntry("some-vendor/New-Pro", rows);
+    expect(entry?.cost).toEqual({ input: 2, output: 8, cache_read: 0.2 });
+    expect(entry?.name).toBe("New Pro (est.)");
+  });
+
+  test("prices free SKUs at zero without a row", () => {
+    const entry = buildEstimatedEntry("acme/spark-free", []);
+    expect(entry?.cost).toEqual({ input: 0, output: 0 });
+    expect(entry?.name).toBe("Spark Free (est.)");
+    expect(entry?.estimated).toBe(true);
+  });
+
+  test("returns null when nothing grounds an estimate", () => {
+    expect(buildEstimatedEntry("acme/unknown-model", rows)).toBeNull();
+    expect(buildEstimatedEntry("acme/unknown-model", [])).toBeNull();
+  });
+});
+
+describe("loadModelsDevRows", () => {
+  function stubFetch(
+    handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+  ): () => void {
+    const original = globalThis.fetch;
+    globalThis.fetch = handler as typeof fetch;
+    return () => {
+      globalThis.fetch = original;
+    };
+  }
+
+  function writeCache(dir: string, fetchedAt: number, json: string): void {
+    writeFileSync(join(dir, MODELS_DEV_CACHE_FILE), JSON.stringify({ fetchedAt, json }));
+  }
+
+  test("uses a fresh cache without fetching", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-modelsdev-"));
+    try {
+      writeCache(dir, Date.now(), RICH_MODELS_DEV_JSON);
+      const restore = stubFetch(async () => {
+        throw new Error("must not fetch");
+      });
+      try {
+        const rows = await loadModelsDevRows({ cacheDir: dir });
+        expect(rows.map((r) => r.id)).toEqual(["acme/New-Pro"]);
+      } finally {
+        restore();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refetches a stale cache and rewrites it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-modelsdev-"));
+    try {
+      writeCache(dir, Date.now() - 48 * 3600_000, JSON.stringify({}));
+      const restore = stubFetch(async () => new Response(RICH_MODELS_DEV_JSON, { status: 200 }));
+      try {
+        const rows = await loadModelsDevRows({ cacheDir: dir, timeoutMs: 1000 });
+        expect(rows.map((r) => r.id)).toEqual(["acme/New-Pro"]);
+        const rewritten = JSON.parse(readFileSync(join(dir, MODELS_DEV_CACHE_FILE), "utf-8")) as {
+          json: string;
+        };
+        expect(rewritten.json).toBe(RICH_MODELS_DEV_JSON);
+      } finally {
+        restore();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to stale cache and to [] without one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cc-modelsdev-"));
+    try {
+      writeCache(dir, Date.now() - 48 * 3600_000, RICH_MODELS_DEV_JSON);
+      const restore = stubFetch(async () => new Response("down", { status: 500 }));
+      try {
+        const stale = await loadModelsDevRows({ cacheDir: dir, timeoutMs: 1000 });
+        expect(stale.map((r) => r.id)).toEqual(["acme/New-Pro"]);
+      } finally {
+        restore();
+      }
+      rmSync(join(dir, MODELS_DEV_CACHE_FILE));
+      const restore2 = stubFetch(async () => new Response("down", { status: 500 }));
+      try {
+        await expect(loadModelsDevRows({ cacheDir: dir, timeoutMs: 1000 })).resolves.toEqual([]);
+      } finally {
+        restore2();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -71,10 +71,10 @@ export async function setup(ctx: V2SetupContext): Promise<() => Promise<void>> {
     // Keep the last-good inventory when the reload fails.
   }
 
-  // Live availability refresh: prune ids the API retired and surface new
-  // ones without waiting for an npm publish. The bundled catalog stays as
-  // the offline fallback; models unknown locally are reported, not
-  // published, until a catalog sync extracts their cost data.
+  // Live availability refresh: prune ids the API retired and publish new
+  // ones with models.dev cost estimates until a catalog sync replaces them.
+  // The bundled catalog stays as the offline fallback; ids with no
+  // estimable data stay reported as pending.
   const sameInventory = (next: ModelEntry[]): boolean =>
     next.length === inventory.length && next.every((m, i) => m.id === inventory[i]?.id);
 
