@@ -691,6 +691,37 @@
     }
   },
   {
+    "id": "deepseek/deepseek-v4.1-flash-fast",
+    "name": "DeepSeek V4.1 Flash Fast",
+    "tier": "open-source",
+    "reasoning": true,
+    "reasoningEfforts": [
+      "low",
+      "high",
+      "max"
+    ],
+    "tool_call": true,
+    "cost": {
+      "input": 0.16,
+      "output": 0.58,
+      "cache_read": 0.016
+    },
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "attachment": true,
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    }
+  },
+  {
     "id": "sakana/fugu-ultra",
     "name": "Fugu Ultra",
     "tier": "open-source",
@@ -1832,9 +1863,8 @@
       "input": [
         "text",
         "image",
-        "video",
         "pdf",
-        "audio"
+        "video"
       ],
       "output": [
         "text"
@@ -1868,8 +1898,7 @@
         "text",
         "image",
         "video",
-        "pdf",
-        "audio"
+        "pdf"
       ],
       "output": [
         "text"
@@ -1903,8 +1932,7 @@
         "text",
         "image",
         "video",
-        "pdf",
-        "audio"
+        "pdf"
       ],
       "output": [
         "text"
@@ -1939,8 +1967,7 @@
         "text",
         "image",
         "video",
-        "pdf",
-        "audio"
+        "pdf"
       ],
       "output": [
         "text"
@@ -1974,8 +2001,7 @@
         "text",
         "image",
         "video",
-        "pdf",
-        "audio"
+        "pdf"
       ],
       "output": [
         "text"
