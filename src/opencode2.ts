@@ -36,9 +36,20 @@ export const COMMANDCODE_PACKAGE = "@opencode/ai/providers/openai-compatible";
 export const COMMANDCODE_ENV_NAMES = ["COMMANDCODE_API_KEY"];
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-const MODELS_PATH = join(MODULE_DIR, "..", "models.json");
-const VERSION_PATH = join(MODULE_DIR, "..", "_version.txt");
-const MANIFEST_PATH = join(MODULE_DIR, "..", "manifest.json");
+
+// Repo layout: src/../ is the package root. Published builds: dist/src/../ is
+// dist/ (catalog copied at build time) with the package root one level above.
+function resolveAsset(name: string): string {
+  for (const dir of [join(MODULE_DIR, ".."), join(MODULE_DIR, "..", "..")]) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(MODULE_DIR, "..", name);
+}
+
+const MODELS_PATH = resolveAsset("models.json");
+const VERSION_PATH = resolveAsset("_version.txt");
+const MANIFEST_PATH = resolveAsset("manifest.json");
 
 export type V2Cost = {
   tier?: { type: "context"; size: number };

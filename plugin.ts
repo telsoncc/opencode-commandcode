@@ -16,9 +16,20 @@ import {
 import type { CatalogManifest } from "./src/manifest.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MODELS_PATH = join(__dirname, "models.json");
-const VERSION_PATH = join(__dirname, "_version.txt");
-const MANIFEST_PATH = join(__dirname, "manifest.json");
+
+// Repo layout keeps the catalog next to plugin.ts; published builds emit
+// dist/plugin.js and ship the catalog inside dist/ (and at the package root).
+function resolveAsset(name: string): string {
+  for (const dir of [__dirname, dirname(__dirname)]) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(__dirname, name);
+}
+
+const MODELS_PATH = resolveAsset("models.json");
+const VERSION_PATH = resolveAsset("_version.txt");
+const MANIFEST_PATH = resolveAsset("manifest.json");
 
 interface PluginFileConfig {
   disableModelSync?: boolean;
