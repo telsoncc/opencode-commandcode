@@ -617,6 +617,7 @@
     "tier": "open-source",
     "reasoning": true,
     "reasoningEfforts": [
+      "off",
       "high",
       "max"
     ],
@@ -676,6 +677,7 @@
     "tier": "open-source",
     "reasoning": true,
     "reasoningEfforts": [
+      "off",
       "high",
       "max"
     ],
@@ -706,6 +708,7 @@
     "tier": "open-source",
     "reasoning": true,
     "reasoningEfforts": [
+      "off",
       "high",
       "max"
     ],
@@ -735,6 +738,7 @@
     "tier": "open-source",
     "reasoning": true,
     "reasoningEfforts": [
+      "off",
       "low",
       "high",
       "max"
@@ -766,6 +770,7 @@
     "tier": "open-source",
     "reasoning": true,
     "reasoningEfforts": [
+      "off",
       "low",
       "high",
       "max"
@@ -2137,37 +2142,6 @@
     }
   },
   {
-    "id": "stealth/pixel-canary",
-    "name": "Pixel Canary",
-    "tier": "open-source",
-    "reasoning": true,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "xhigh"
-    ],
-    "tool_call": true,
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cache_read": 0
-    },
-    "limit": {
-      "context": 262144,
-      "output": 131072
-    },
-    "attachment": true,
-    "modalities": {
-      "input": [
-        "text",
-        "image"
-      ],
-      "output": [
-        "text"
-      ]
-    }
-  },
-  {
     "id": "Qwen/Qwen3.6-Max-Preview",
     "name": "Qwen 3.6 Max Preview",
     "tier": "open-source",
@@ -2473,7 +2447,8 @@
     "reasoningEfforts": [
       "low",
       "medium",
-      "high"
+      "high",
+      "max"
     ],
     "tool_call": true,
     "cost": {
