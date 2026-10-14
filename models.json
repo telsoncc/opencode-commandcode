@@ -1774,7 +1774,7 @@
     }
   },
   {
-    "id": "inclusionai/ling-3.1-flash:free",
+    "id": "inclusionai/ling-3.1-flash",
     "name": "Ling 3.1 Flash",
     "tier": "open-source",
     "reasoning": true,
@@ -1785,9 +1785,9 @@
     ],
     "tool_call": true,
     "cost": {
-      "input": 0,
-      "output": 0,
-      "cache_read": 0
+      "input": 0.3,
+      "output": 0.9,
+      "cache_read": 0.06
     },
     "limit": {
       "context": 262144,
