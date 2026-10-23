@@ -19,6 +19,40 @@ export interface ModelEntry {
   modalities?: { input: string[]; output: string[] };
   /** Runtime estimate from models.dev — replaced on the next catalog sync. */
   estimated?: boolean;
+  /**
+   * Wire endpoints the gateway serves this model on, as advertised by the
+   * vendor `/models` payload (`supported_endpoints`). Absent on catalogs
+   * extracted before the field existed; `modelTransport` falls back to the
+   * model family in that case.
+   */
+  supportedEndpoints?: string[];
+}
+
+/** OpenAI-shaped wire (`/chat/completions`) vs Anthropic Messages (`/messages`). */
+export type ModelTransport = "chat" | "messages";
+
+/**
+ * Which wire shape a model is served on. A model that is Messages-only cannot
+ * be called through `/chat/completions` — the gateway rejects it with
+ * `must be called via /provider/v1/messages` — so the transport has to be
+ * resolved per model, not per provider.
+ *
+ * Falls back to the model family when the catalog carries no
+ * `supported_endpoints`: the `claude-*` family is the only Messages-only group
+ * the gateway serves, so the heuristic is exact for catalogs that predate the
+ * field. Family matching runs on the config key, so a vendor-prefixed id like
+ * `anthropic/claude-sonnet-5` resolves the same as a bare one.
+ */
+export function modelTransport(
+  entry: Pick<ModelEntry, "id" | "supportedEndpoints">,
+): ModelTransport {
+  const endpoints = entry.supportedEndpoints;
+  if (endpoints && endpoints.length > 0) {
+    return endpoints.includes("/messages") && !endpoints.includes("/chat/completions")
+      ? "messages"
+      : "chat";
+  }
+  return toConfigKey(entry.id).startsWith("claude-") ? "messages" : "chat";
 }
 
 export interface CostEntry {
@@ -794,8 +828,26 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+/**
+ * One row of the vendor availability payload. `supported_endpoints` is
+ * optional upstream data: it is kept only when it is an array of non-empty
+ * strings, so a schema nudge there can never fail a whole catalog sync.
+ */
+export interface AvailabilityModel {
+  id: string;
+  supportedEndpoints?: string[];
+}
+
+function parseSupportedEndpoints(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const endpoints = value.filter(
+    (item): item is string => typeof item === "string" && item.length > 0,
+  );
+  return endpoints.length > 0 ? endpoints : undefined;
+}
+
 /** Validate the OpenAI-style `{ object: "list", data: [{ id }] }` availability payload. */
-export function parseAvailabilityIds(payload: unknown): string[] {
+export function parseAvailability(payload: unknown): AvailabilityModel[] {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("availability response must be an object");
   }
@@ -805,21 +857,49 @@ export function parseAvailabilityIds(payload: unknown): string[] {
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error("availability response data must be a non-empty array");
   }
-  const ids: string[] = [];
+  const models: AvailabilityModel[] = [];
   const seen = new Set<string>();
   for (const item of data) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new Error("availability response items must be objects with a non-empty string id");
     }
-    const id = (item as Record<string, unknown>)["id"];
+    const row = item as Record<string, unknown>;
+    const id = row["id"];
     if (!isNonEmptyString(id)) {
       throw new Error("availability response items must be objects with a non-empty string id");
     }
     if (seen.has(id)) throw new Error(`duplicate availability id: ${id}`);
     seen.add(id);
-    ids.push(id);
+    const supportedEndpoints = parseSupportedEndpoints(row["supported_endpoints"]);
+    models.push(supportedEndpoints ? { id, supportedEndpoints } : { id });
   }
-  return ids;
+  return models;
+}
+
+/** Validate the OpenAI-style `{ object: "list", data: [{ id }] }` availability payload. */
+export function parseAvailabilityIds(payload: unknown): string[] {
+  return parseAvailability(payload).map((model) => model.id);
+}
+
+/**
+ * Copy `supported_endpoints` from the availability payload onto matching
+ * entries. Entries the payload omits, or lists without usable endpoints, are
+ * left untouched — a partial payload never strips transport data already on
+ * the catalog. Returns how many entries were updated.
+ */
+export function applyAvailabilityEndpoints<T extends { id: string; supportedEndpoints?: string[] }>(
+  entries: T[],
+  availability: readonly AvailabilityModel[],
+): number {
+  const byId = new Map(availability.map((model) => [model.id, model.supportedEndpoints]));
+  let updated = 0;
+  for (const entry of entries) {
+    const endpoints = byId.get(entry.id);
+    if (!endpoints) continue;
+    entry.supportedEndpoints = endpoints;
+    updated++;
+  }
+  return updated;
 }
 
 /** Retain only candidates whose exact ID is callable; collect sorted excluded IDs. */
