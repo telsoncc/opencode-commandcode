@@ -5,13 +5,15 @@ import { execSync } from "child_process";
 import {
   NPM_PACKAGE,
   MODELS_API_URL,
+  applyAvailabilityEndpoints,
   extractCostData,
   buildCostMap,
   filterCatalogByAvailability,
   generateOpencodeModels,
   loadCatalogFromBundle,
   loadCatalogFromLocalCommandCode,
-  parseAvailabilityIds,
+  parseAvailability,
+  type AvailabilityModel,
   type ModelEntry,
 } from "../src/catalog.js";
 import { applyDocCosts, fetchOfficialModelsMarkdown, parseModelsTable } from "../src/costs-docs.js";
@@ -48,7 +50,7 @@ function readPriorManifest(): CatalogManifest | null {
   }
 }
 
-async function fetchAvailabilityIds(): Promise<string[]> {
+async function fetchAvailability(): Promise<AvailabilityModel[]> {
   const resp = await fetch(MODELS_API_URL);
   if (!resp.ok) throw new Error(`models endpoint returned ${resp.status}`);
   let payload: unknown;
@@ -57,7 +59,7 @@ async function fetchAvailabilityIds(): Promise<string[]> {
   } catch {
     throw new Error("models endpoint returned invalid JSON");
   }
-  return parseAvailabilityIds(payload);
+  return parseAvailability(payload);
 }
 
 /** Build all model, version, and manifest contents before the first write. */
@@ -263,7 +265,8 @@ async function main() {
 
   const priorManifest = readPriorManifest();
   console.log("Fetching callable model availability...");
-  const availableIds = await fetchAvailabilityIds();
+  const availability = await fetchAvailability();
+  const availableIds = availability.map((model) => model.id);
   console.log(`  Callable models: ${availableIds.length}`);
   // Enrichment mutates entries in place, so filter the extracted candidates
   // first and run the floor gate before any cost work or artifact write.
@@ -278,6 +281,12 @@ async function main() {
     );
   }
   const entries = prefiltered.retained;
+
+  // Wire transport is resolved per model — Messages-only models are rejected
+  // by the OpenAI-compatible runtime — so it has to be recorded in the
+  // catalog. Same payload as the availability gate: no extra request.
+  const endpointCount = applyAvailabilityEndpoints(entries, availability);
+  console.log(`  Recorded wire endpoints for ${endpointCount} models`);
 
   const cliIds = bundleSource ? cliCostIds(bundleSource) : new Set<string>();
   const docIds = new Set<string>();

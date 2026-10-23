@@ -1,12 +1,16 @@
 import { expect, test, describe } from "bun:test";
 import {
+  applyAvailabilityEndpoints,
   buildModelEntry,
   disambiguateModelNames,
   filterCatalogByAvailability,
   generateOpencodeModels,
   loadCatalogFromBundle,
+  modelTransport,
+  parseAvailability,
   parseAvailabilityIds,
   resolveCommandCodePackage,
+  type AvailabilityModel,
   type CostEntry,
   type ModelEntry,
   type SnEntry,
@@ -355,6 +359,105 @@ describe("parseAvailabilityIds", () => {
     expect(() => parseAvailabilityIds(ok([{ id: "" }]))).toThrow();
     expect(() => parseAvailabilityIds(ok([{ id: "a" }, { id: "a" }]))).toThrow();
     expect(() => parseAvailabilityIds(ok([{ nope: 1 }]))).toThrow();
+  });
+
+  test("stays id-only even when rows carry supported_endpoints", () => {
+    expect(
+      parseAvailabilityIds(ok([{ id: "a", supported_endpoints: ["/messages"] }, { id: "b" }])),
+    ).toEqual(["a", "b"]);
+  });
+});
+
+describe("parseAvailability", () => {
+  const ok = (data: unknown[]) => ({ object: "list", data });
+
+  test("captures supported_endpoints alongside the id", () => {
+    expect(
+      parseAvailability(
+        ok([
+          { id: "claude-haiku-5-5", supported_endpoints: ["/messages"] },
+          { id: "gpt-5.5", supported_endpoints: ["/chat/completions", "/responses"] },
+        ]),
+      ),
+    ).toEqual([
+      { id: "claude-haiku-5-5", supportedEndpoints: ["/messages"] },
+      { id: "gpt-5.5", supportedEndpoints: ["/chat/completions", "/responses"] },
+    ]);
+  });
+
+  test("omits an absent, empty, or malformed field instead of failing the payload", () => {
+    expect(parseAvailability(ok([{ id: "a" }]))).toEqual([{ id: "a" }]);
+    expect(parseAvailability(ok([{ id: "a", supported_endpoints: "nope" }]))).toEqual([
+      { id: "a" },
+    ]);
+    expect(parseAvailability(ok([{ id: "a", supported_endpoints: [] }]))).toEqual([{ id: "a" }]);
+    expect(parseAvailability(ok([{ id: "a", supported_endpoints: ["/messages", 7, ""] }]))).toEqual(
+      [{ id: "a", supportedEndpoints: ["/messages"] }],
+    );
+  });
+
+  test("still rejects a malformed payload shape", () => {
+    expect(() => parseAvailability(null)).toThrow();
+    expect(() => parseAvailability(ok([]))).toThrow();
+    expect(() => parseAvailability(ok([{ id: "a" }, { id: "a" }]))).toThrow();
+  });
+});
+
+describe("applyAvailabilityEndpoints", () => {
+  const entry = (id: string): ModelEntry => ({
+    id,
+    name: id,
+    tier: "open-source",
+    reasoning: false,
+    tool_call: true,
+    cost: { input: 0, output: 0 },
+    limit: { context: 1, output: 1 },
+  });
+
+  test("stamps matching entries and leaves the rest untouched", () => {
+    const stamped = entry("claude-haiku-5-5");
+    const listed = entry("gpt-5.5");
+    const untouched = entry("unmentioned");
+    untouched.supportedEndpoints = ["/chat/completions"];
+    const availability: AvailabilityModel[] = [
+      { id: "claude-haiku-5-5", supportedEndpoints: ["/messages"] },
+      { id: "gpt-5.5" },
+    ];
+    expect(applyAvailabilityEndpoints([stamped, listed, untouched], availability)).toBe(1);
+    expect(stamped.supportedEndpoints).toEqual(["/messages"]);
+    expect(listed.supportedEndpoints).toBeUndefined();
+    expect(untouched.supportedEndpoints).toEqual(["/chat/completions"]);
+  });
+});
+
+describe("modelTransport", () => {
+  test("endpoint data decides the wire shape", () => {
+    expect(modelTransport({ id: "claude-haiku-5-5", supportedEndpoints: ["/messages"] })).toBe(
+      "messages",
+    );
+    expect(modelTransport({ id: "gpt-5.5", supportedEndpoints: ["/chat/completions"] })).toBe(
+      "chat",
+    );
+    expect(
+      modelTransport({ id: "gpt-5.5", supportedEndpoints: ["/chat/completions", "/responses"] }),
+    ).toBe("chat");
+    expect(
+      modelTransport({ id: "x", supportedEndpoints: ["/messages", "/chat/completions"] }),
+    ).toBe("chat");
+  });
+
+  test("falls back to the claude-* family when the catalog has no endpoints", () => {
+    expect(modelTransport({ id: "claude-haiku-5-5" })).toBe("messages");
+    expect(modelTransport({ id: "claude-haiku-4-5-20251001" })).toBe("messages");
+    expect(modelTransport({ id: "gpt-5.5" })).toBe("chat");
+    expect(modelTransport({ id: "deepseek/deepseek-v4-pro" })).toBe("chat");
+    expect(modelTransport({ id: "anthropic/claude-sonnet-5" })).toBe("messages");
+  });
+
+  test("an empty endpoint list falls back, and family matching ignores case", () => {
+    expect(modelTransport({ id: "claude-opus-5", supportedEndpoints: [] })).toBe("messages");
+    expect(modelTransport({ id: "Claude-Opus-5" })).toBe("messages");
+    expect(modelTransport({ id: "CLAUDE-HAIKU-5-5" })).toBe("messages");
   });
 });
 

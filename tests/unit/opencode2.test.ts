@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  COMMANDCODE_ANTHROPIC_PACKAGE,
   COMMANDCODE_ENV_NAMES,
+  COMMANDCODE_PACKAGE,
   COMMANDCODE_PROVIDER_ID,
   applyIntegration,
   applyProviderInventory,
@@ -14,6 +16,7 @@ import {
   fetchRemoteAvailability,
   loadCatalogForV2,
   modelEntryToV2,
+  modelPackage,
   persistRefreshedModels,
   refreshCatalogFromRemote,
   remoteRefreshRunnerCount,
@@ -43,6 +46,7 @@ test("modelEntryToV2 maps ids, capabilities, cost, limits and variants", () => {
   expect(info.id).toBe("qwen3.7-max");
   expect(info.modelID).toBe("Qwen/Qwen3.7-Max");
   expect(info.providerID).toBe(COMMANDCODE_PROVIDER_ID);
+  expect(info.package).toBe(COMMANDCODE_PACKAGE);
   expect(info.name).toBe("Qwen 3.7 Max");
   expect(info.capabilities).toEqual({ tools: true, input: ["text"], output: ["text"] });
   expect(info.limit).toEqual({ context: 1000000, output: 131072 });
@@ -70,6 +74,56 @@ test("modelEntryToV2 defaults to text-only and no variants", () => {
   expect(info.capabilities).toEqual({ tools: true, input: ["text"], output: ["text"] });
   expect(info.variants).toEqual([]);
   expect(info.cost).toEqual([{ input: 0.1, output: 0.3, cache: { read: 0, write: 0 } }]);
+});
+
+test("modelEntryToV2 overrides the runtime for Messages-only models", () => {
+  const anthropic = modelEntryToV2({
+    id: "claude-haiku-5-5",
+    name: "Claude Haiku 5.5",
+    tier: "premium",
+    reasoning: true,
+    reasoningEfforts: ["low", "high"],
+    tool_call: true,
+    cost: { input: 1, output: 5 },
+    limit: { context: 200000, output: 64000 },
+    supportedEndpoints: ["/messages"],
+  });
+  expect(anthropic.package).toBe(COMMANDCODE_ANTHROPIC_PACKAGE);
+  expect(anthropic.id).toBe("claude-haiku-5-5");
+
+  expect(modelEntryToV2({ ...sampleEntry, supportedEndpoints: ["/messages"] }).package).toBe(
+    COMMANDCODE_ANTHROPIC_PACKAGE,
+  );
+  expect(
+    modelEntryToV2({ ...sampleEntry, supportedEndpoints: ["/chat/completions"] }).package,
+  ).toBe(COMMANDCODE_PACKAGE);
+});
+
+test("modelPackage falls back to the claude-* family when the catalog has no endpoints", () => {
+  expect(modelPackage({ ...sampleEntry, id: "claude-opus-5-5" })).toBe(
+    COMMANDCODE_ANTHROPIC_PACKAGE,
+  );
+  expect(modelPackage({ ...sampleEntry, id: "gpt-5.5" })).toBe(COMMANDCODE_PACKAGE);
+  // Explicit endpoint data beats the family heuristic in both directions.
+  expect(
+    modelPackage({
+      ...sampleEntry,
+      id: "claude-opus-5-5",
+      supportedEndpoints: ["/chat/completions"],
+    }),
+  ).toBe(COMMANDCODE_PACKAGE);
+  expect(
+    modelPackage({ ...sampleEntry, id: "not-a-claude", supportedEndpoints: ["/messages"] }),
+  ).toBe(COMMANDCODE_ANTHROPIC_PACKAGE);
+});
+
+test("the provider-wide package stays the OpenAI default and is only a fallback", () => {
+  // Per-model `package` overrides it, so Messages-only models escape the
+  // OpenAI-compatible runtime without a second provider entry.
+  expect(buildProviderInfo().package).toBe(COMMANDCODE_PACKAGE);
+  expect(modelEntryToV2({ ...sampleEntry, id: "claude-opus-5-5" }).package).not.toBe(
+    buildProviderInfo().package,
+  );
 });
 
 test("buildV2Models maps every entry", () => {

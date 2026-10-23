@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import {
   MODELS_API_URL,
   filterCatalogByAvailability,
+  modelTransport,
   parseAvailabilityIds,
   toConfigKey,
   loadCatalogFromLocalCommandCode,
@@ -33,6 +34,12 @@ export const COMMANDCODE_INTEGRATION_ID = "commandcode";
 export const COMMANDCODE_PROVIDER_NAME = "Command Code";
 export const COMMANDCODE_BASE_URL = "https://api.commandcode.ai/provider/v1";
 export const COMMANDCODE_PACKAGE = "@opencode/ai/providers/openai-compatible";
+/**
+ * Anthropic Messages runtime. Models the gateway serves only on `/messages`
+ * cannot go through the OpenAI-compatible runtime, so they carry this package
+ * on the model entry and it overrides the provider-wide default.
+ */
+export const COMMANDCODE_ANTHROPIC_PACKAGE = "@opencode/ai/providers/anthropic-compatible";
 export const COMMANDCODE_ENV_NAMES = ["COMMANDCODE_API_KEY"];
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +64,12 @@ export type V2ModelInfo = {
   /** Wire id sent to the provider. Lets one upstream model back one entry. */
   modelID: string;
   providerID: string;
+  /**
+   * Provider runtime for this model. Overrides the provider-wide `package`
+   * — Anthropic Messages models are rejected by the OpenAI-compatible
+   * runtime, so they carry `@opencode/ai/providers/anthropic-compatible`.
+   */
+  package?: string;
   name: string;
   capabilities: { tools: boolean; input: string[]; output: string[] };
   limit: { context: number; output: number };
@@ -136,6 +149,16 @@ function loadPluginFileConfig(): PluginFileConfig {
   }
 }
 
+/**
+ * Provider runtime for one model: Anthropic Messages models need the
+ * anthropic-compatible runtime, everything else the OpenAI-compatible one.
+ * The provider-wide `package` stays the OpenAI default and is only a fallback
+ * for entries that carry no `package` of their own.
+ */
+export function modelPackage(entry: ModelEntry): string {
+  return modelTransport(entry) === "messages" ? COMMANDCODE_ANTHROPIC_PACKAGE : COMMANDCODE_PACKAGE;
+}
+
 export function modelEntryToV2(entry: ModelEntry): V2ModelInfo {
   const rawInput = entry.modalities?.input?.filter(
     (m): m is string => typeof m === "string" && m.length > 0,
@@ -149,6 +172,7 @@ export function modelEntryToV2(entry: ModelEntry): V2ModelInfo {
     id: toConfigKey(entry.id),
     modelID: entry.id,
     providerID: COMMANDCODE_PROVIDER_ID,
+    package: modelPackage(entry),
     name: entry.name,
     capabilities: { tools: entry.tool_call, input, output: ["text"] },
     limit: { context: entry.limit.context, output: entry.limit.output },
