@@ -40,4 +40,29 @@ describe("cutKeepAChangelog", () => {
 `;
     expect(cutKeepAChangelog(already, "0.6.0", "2026-08-29")).toBe(already);
   });
+
+  test("does not add an empty version heading when Unreleased has no body", () => {
+    const empty = `${HEADER}## [Unreleased]
+
+## [0.5.0] - 2026-08-01
+
+### Fixed
+
+- Old thing.
+`;
+    expect(cutKeepAChangelog(empty, "0.6.0", "2026-08-28")).toBe(empty);
+  });
+
+  test("treats a whitespace-only Unreleased body as empty", () => {
+    const blank = `${HEADER}## [Unreleased]
+
+
+## [0.5.0] - 2026-08-01
+
+### Fixed
+
+- Old thing.
+`;
+    expect(cutKeepAChangelog(blank, "0.6.0", "2026-08-28")).toBe(blank);
+  });
 });

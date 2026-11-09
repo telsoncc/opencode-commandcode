@@ -26,11 +26,16 @@ export function cutKeepAChangelog(markdown: string, version: string, date: strin
     }
   }
 
-  const before = lines.slice(0, start + 1).join("");
   const body = lines
     .slice(start + 1, end)
     .join("")
     .replace(/^\n+/, "\n");
+  // Nothing was written under [Unreleased] since the last cut: emitting a
+  // heading here would only add an empty version section. Releases are also
+  // described on GitHub (semantic-release catalog notes), so skip the cut.
+  if (body.trim() === "") return markdown;
+
+  const before = lines.slice(0, start + 1).join("");
   const after = lines.slice(end).join("");
   return `${before}\n## [${version}] - ${date}\n${body}${after}`;
 }
