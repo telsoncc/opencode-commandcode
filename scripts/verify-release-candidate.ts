@@ -4,6 +4,7 @@ import { execSync } from "child_process";
 import { mkdtempSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { missingEntrypoints, parseTarListing, type PackPackageJson } from "../src/pack-contract.js";
 
 const ROOT = join(import.meta.dir, "..");
 const REQUIRED = ["plugin.ts", "models.json", "manifest.json", "package.json", "src/catalog.ts"];
@@ -21,10 +22,7 @@ try {
   const listing = execSync(`tar -tzf ${JSON.stringify(join(dir, tgz))}`, {
     encoding: "utf-8",
   });
-  const files = listing
-    .split("\n")
-    .filter(Boolean)
-    .map((f) => f.replace(/^package\//, ""));
+  const files = parseTarListing(listing);
   for (const need of REQUIRED) {
     if (!files.includes(need) && !files.some((f) => f === need || f.startsWith(need))) {
       throw new Error(`tarball missing ${need}`);
@@ -39,7 +37,7 @@ try {
     execSync(`tar -xzOf ${JSON.stringify(join(dir, tgz))} package/package.json`, {
       encoding: "utf-8",
     }),
-  ) as { version?: string };
+  ) as PackPackageJson & { version?: string };
   const packedManifest = JSON.parse(
     execSync(`tar -xzOf ${JSON.stringify(join(dir, tgz))} package/manifest.json`, {
       encoding: "utf-8",
@@ -48,6 +46,12 @@ try {
   if (pkgJson.version !== packedManifest.pluginVersion) {
     throw new Error(
       `packed manifest pluginVersion ${packedManifest.pluginVersion ?? "(missing)"} != package.json ${pkgJson.version ?? "(missing)"}`,
+    );
+  }
+  const missing = missingEntrypoints(pkgJson, files);
+  if (missing.length > 0) {
+    throw new Error(
+      `tarball missing declared entrypoint(s) ${missing.join(", ")} (run the build before packing)`,
     );
   }
   console.log(`verified ${tgz} (${files.length} files, version ${pkgJson.version})`);
