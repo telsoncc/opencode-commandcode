@@ -751,42 +751,6 @@
     ]
   },
   {
-    "id": "reflection/beam:free",
-    "name": "Beam 1.0",
-    "tier": "open-source",
-    "reasoning": true,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
-    "tool_call": true,
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cache_read": 0
-    },
-    "limit": {
-      "context": 1048576,
-      "output": 131072
-    },
-    "attachment": false,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "supportedEndpoints": [
-      "/chat/completions",
-      "/responses"
-    ]
-  },
-  {
     "id": "stealth/crouton-alpha",
     "name": "Crouton Alpha",
     "tier": "open-source",
@@ -1016,6 +980,42 @@
     },
     "limit": {
       "context": 1000000,
+      "output": 65536
+    },
+    "attachment": true,
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "supportedEndpoints": [
+      "/chat/completions",
+      "/responses"
+    ]
+  },
+  {
+    "id": "deepseek/deepseek-v4.1-flash-ultrafast",
+    "name": "DeepSeek V4.1 Flash Ultrafast",
+    "tier": "open-source",
+    "reasoning": true,
+    "reasoningEfforts": [
+      "off",
+      "low",
+      "high",
+      "max"
+    ],
+    "tool_call": true,
+    "cost": {
+      "input": 2.4,
+      "output": 9.6,
+      "cache_read": 0.048
+    },
+    "limit": {
+      "context": 1048576,
       "output": 65536
     },
     "attachment": true,
@@ -2065,36 +2065,8 @@
     "modalities": {
       "input": [
         "text",
-        "image"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "supportedEndpoints": [
-      "/chat/completions",
-      "/responses"
-    ]
-  },
-  {
-    "id": "poolside/laguna-s-2.1-free",
-    "name": "Laguna S 2.1",
-    "tier": "open-source",
-    "reasoning": true,
-    "tool_call": true,
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cache_read": 0
-    },
-    "limit": {
-      "context": 256000,
-      "output": 32768
-    },
-    "attachment": false,
-    "modalities": {
-      "input": [
-        "text"
+        "image",
+        "pdf"
       ],
       "output": [
         "text"
