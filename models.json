@@ -1478,6 +1478,45 @@
     ]
   },
   {
+    "id": "google/gemini-4-neon",
+    "name": "Gemini 4 Neon",
+    "tier": "open-source",
+    "reasoning": true,
+    "reasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "tool_call": true,
+    "cost": {
+      "input": 3,
+      "output": 15,
+      "cache_read": 0.15
+    },
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "attachment": true,
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "supportedEndpoints": [
+      "/chat/completions",
+      "/responses"
+    ]
+  },
+  {
     "id": "zai-org/GLM-5",
     "name": "GLM-5",
     "tier": "open-source",
@@ -1993,41 +2032,6 @@
     "supportedEndpoints": [
       "/chat/completions",
       "/responses"
-    ]
-  },
-  {
-    "id": "thinkingmachines/inkling-2-small:free",
-    "name": "Inkling 2 Small",
-    "tier": "open-source",
-    "reasoning": true,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "high",
-      "max"
-    ],
-    "tool_call": true,
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cache_read": 0
-    },
-    "limit": {
-      "context": 1048576,
-      "output": 131072
-    },
-    "attachment": true,
-    "modalities": {
-      "input": [
-        "text",
-        "image"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "supportedEndpoints": [
-      "/chat/completions"
     ]
   },
   {
