@@ -1035,7 +1035,8 @@
     },
     "supportedEndpoints": [
       "/chat/completions",
-      "/responses"
+      "/responses",
+      "/messages"
     ]
   },
   {
@@ -1704,7 +1705,8 @@
       ]
     },
     "supportedEndpoints": [
-      "/chat/completions"
+      "/chat/completions",
+      "/messages"
     ]
   },
   {
@@ -1992,8 +1994,7 @@
     "modalities": {
       "input": [
         "text",
-        "image",
-        "pdf"
+        "image"
       ],
       "output": [
         "text"
@@ -2258,7 +2259,8 @@
     },
     "supportedEndpoints": [
       "/chat/completions",
-      "/responses"
+      "/responses",
+      "/messages"
     ]
   },
   {
