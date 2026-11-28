@@ -897,7 +897,8 @@
     },
     "supportedEndpoints": [
       "/chat/completions",
-      "/responses"
+      "/responses",
+      "/messages"
     ]
   },
   {
